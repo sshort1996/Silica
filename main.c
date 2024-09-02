@@ -2,6 +2,9 @@
 #include <stdlib.h>
 #include <time.h>
 #include <string.h>
+#include <unistd.h> // for chdir
+#include <sys/stat.h> // for mkdir
+#include <errno.h>
 
 #define FILE_PATH_MAX 256
 #define TIMESTAMP_MAX 80
@@ -70,6 +73,33 @@ void generate_timestamp(char *timestamp, size_t size) {
     }
 }
 
+// Function to extract the username and repository name from the URL
+void parse_url(const char* url, char* username, char* repo_name) {
+    char *at_ptr, *colon_ptr, *slash_ptr;
+
+    at_ptr = strchr(url, '@'); // For SSH URLs
+    colon_ptr = strchr(url, ':'); // For SSH URLs
+    slash_ptr = strstr(url, "/"); // For HTTPS URLs
+
+    if (at_ptr && colon_ptr) { // SSH format: git@github.com:username/repo.git
+        sscanf(colon_ptr + 1, "%[^/]/%[^.]", username, repo_name);
+    } else if (slash_ptr) { // HTTPS format: https://github.com/username/repo.git
+        sscanf(slash_ptr + 1, "%[^/]/%[^.]", username, repo_name);
+    }
+}
+
+// Function to check if a directory exists
+int dir_exists(const char *path) {
+    struct stat st;
+    return (stat(path, &st) == 0 && S_ISDIR(st.st_mode));
+}
+
+// Function to check if a file exists
+int file_exists(const char *path) {
+    struct stat st;
+    return (stat(path, &st) == 0 && S_ISREG(st.st_mode));
+}
+
 int main(int argc, char *argv[]) {
     char file_path[FILE_PATH_MAX];
     char timestamp[TIMESTAMP_MAX];
@@ -84,20 +114,51 @@ int main(int argc, char *argv[]) {
     if (is_git_repository()) {
         char *url = get_remote_url();
         if (url) {
-            printf("Remote URL: %s\n", url);
-            
+            char username[256] = {0};
+            char repo_name[256] = {0};
+
+            // Parse the URL to get the username and repository name
+            parse_url(url, username, repo_name);
+            printf("Username: %s, Repository Name: %s\n", username, repo_name);
+
+            // Check if directory exists
+            if (!dir_exists(username)) {
+                // Create directory
+                if (mkdir(username, 0777) != 0) {
+                    perror("Failed to create directory");
+                } else {
+                    printf("Directory '%s' created.\n", username);
+                }
+            } else {
+                printf("Directory '%s' already exists.\n", username);
+            }
+
+            // Check if file exists
+            snprintf(file_path, sizeof(file_path), "%s/temp/%s.txt", username, repo_name);
+            if (!file_exists(file_path)) {
+                // Create file
+                FILE *fp = fopen(file_path, "w");
+                if (fp == NULL) {
+                    perror("Failed to create file");
+                } else {
+                    printf("File '%s' created.\n", file_path);
+                    fclose(fp);
+                }
+            } else {
+                printf("File '%s' already exists.\n", file_path);
+            }
+
         } else {
             printf("Failed to retrieve remote URL.\n");
         }
     } else {
-        printf("Not a Git repository.\n");
+        printf("Not a Git repository. Creating note in a temp location\n");
+        if (snprintf(file_path, sizeof(file_path), "%s/temp/%s.txt", target_dir, timestamp) >= sizeof(file_path)) {
+            fprintf(stderr, "File path is too long.\n");
+            return EXIT_FAILURE;
+        }
     }
 
-    // Create the file path
-    if (snprintf(file_path, sizeof(file_path), "%s/%s.txt", target_dir, timestamp) >= sizeof(file_path)) {
-        fprintf(stderr, "File path is too long.\n");
-        return EXIT_FAILURE;
-    }
 
     // Open the file for writing
     FILE *file = fopen(file_path, "w");
