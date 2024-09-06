@@ -9,7 +9,7 @@
 #define FILE_PATH_MAX 256
 #define TIMESTAMP_MAX 80
 
-const char target_dir[] = "test-dir"; // Global target directory (e.g., Obsidian vault location)
+const char target_dir[] = "/Users/shaneshort/Documents/Development/noodling/obs-cli/test-dir"; // Update with the desired directory
 #define CWD_PATH_SIZE 128 // cwd path 
 
 // function to check if we're in a git repository 
@@ -88,6 +88,15 @@ void parse_url(const char* url, char* username, char* repo_name) {
     }
 }
 
+// Function to create a directory
+void create_directory(const char *path) {
+    if (mkdir(path, 0777) != 0) {
+        perror("Failed to create directory");
+    } else {
+        printf("Directory '%s' created.\n", path);
+    }
+}
+
 // Function to check if a directory exists
 int dir_exists(const char *path) {
     struct stat st;
@@ -128,13 +137,26 @@ int main(int argc, char *argv[]) {
                     perror("Failed to create directory");
                 } else {
                     printf("Directory '%s' created.\n", username);
+
+                    // Create 'temp' subdirectory inside the 'username' directory
+                    char temp_path[FILE_PATH_MAX];
+                    snprintf(temp_path, sizeof(temp_path), "%s/temp", username);
+                    
+                    if (mkdir(temp_path, 0777) != 0) {
+                        perror("Failed to create 'temp' subdirectory");
+                    } else {
+                        printf("Subdirectory '%s' created.\n", temp_path);
+                    }
                 }
             } else {
                 printf("Directory '%s' already exists.\n", username);
             }
 
-            // Check if file exists
+            size_t file_path_length = strlen(username) + strlen(repo_name) + strlen("/temp/") + strlen(".txt") + 1;
+
+            // Format the string into the buffer
             snprintf(file_path, sizeof(file_path), "%s/temp/%s.txt", username, repo_name);
+
             if (!file_exists(file_path)) {
                 // Create file
                 FILE *fp = fopen(file_path, "w");
@@ -157,40 +179,40 @@ int main(int argc, char *argv[]) {
             fprintf(stderr, "File path is too long.\n");
             return EXIT_FAILURE;
         }
-    }
+     }
 
+    // Ensure file path is properly set for opening in Vim
+    if (!file_exists(file_path)) {
+        FILE *file = fopen(file_path, "w");
+        if (file == NULL) {
+            perror("Error opening file");
+            return EXIT_FAILURE;
+        }
 
-    // Open the file for writing
-    FILE *file = fopen(file_path, "w");
-    if (file == NULL) {
-        perror("Error opening file");
+        if (argc > 1) {
+            // Write the command-line argument to the file
+            fprintf(file, "Hello, World!\n");
+            fputs(argv[1], file);
+        } else {
+            fclose(file);
+        }
+    } 
+
+    // Open the file in Vim
+    printf("Opening Vim...\n");
+    char vim_command[FILE_PATH_MAX + 5]; // Extra space for "vim " and null terminator
+
+    if (snprintf(vim_command, sizeof(vim_command), "vim %s", file_path) >= sizeof(vim_command)) {
+        fprintf(stderr, "Vim command is too long.\n");
         return EXIT_FAILURE;
     }
 
-    if (argc > 1) {
-        // Write the command-line argument to the file
-        fprintf(file, "Hello, World!\n");
-        fputs(argv[1], file);
-    } else {
-        // If no command-line arguments, open a Vim editor to write the file
-        printf("Opening Vim...\n");
-        char vim_command[FILE_PATH_MAX + 5]; // Extra space for "vim " and null terminator
-
-        if (snprintf(vim_command, sizeof(vim_command), "vim %s", file_path) >= sizeof(vim_command)) {
-            fprintf(stderr, "Vim command is too long.\n");
-            fclose(file);
-            return EXIT_FAILURE;
-        }
-
-        int status = system(vim_command);
-        if (status == -1) {
-            perror("Error executing Vim");
-            fclose(file);
-            return EXIT_FAILURE;
-        }
+    int status = system(vim_command);
+    if (status == -1) {
+        perror("Error executing Vim");
+        return EXIT_FAILURE;
     }
 
-    fclose(file);
     printf("Note written successfully.\n");
 
     return EXIT_SUCCESS;

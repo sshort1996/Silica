@@ -1,0 +1,1 @@
+ a new file in vim  ... Plus an edit to the same file ... and another one ... and another one
