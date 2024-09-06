@@ -197,17 +197,17 @@ int main(int argc, char *argv[]) {
     }
 
     // Open the file in Vim
-    printf("Opening Vim...\n");
-    char vim_command[FILE_PATH_MAX + 5]; // Extra space for "vim " and null terminator
+    printf("Opening Neovim...\n");
+    char vim_command[FILE_PATH_MAX + 6]; // Extra space for "vim " and null terminator
 
-    if (snprintf(vim_command, sizeof(vim_command), "vim %s", file_path) >= sizeof(vim_command)) {
+    if (snprintf(vim_command, sizeof(vim_command), "nvim %s", file_path) >= sizeof(vim_command)) {
         fprintf(stderr, "Vim command is too long.\n");
         return EXIT_FAILURE;
     }
 
     int status = system(vim_command);
     if (status == -1) {
-        perror("Error executing Vim");
+        perror("Error executing Neovim");
         return EXIT_FAILURE;
     }
 
