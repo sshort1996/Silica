@@ -6,11 +6,11 @@
 #include <sys/stat.h> // for mkdir
 #include <errno.h>
 
-#define FILE_PATH_MAX 256
+#define FILE_PATH_MAX 512  // Increased to account for longer paths
 #define TIMESTAMP_MAX 80
 
-const char target_dir[] = "/Users/shaneshort/Documents/Development/noodling/obs-cli/test-dir"; // Update with the desired directory
-#define CWD_PATH_SIZE 128 // cwd path 
+const char target_dir[] = "/Users/shaneshort/Documents/Notes/obs-cli/obs-cli/";
+#define CWD_PATH_SIZE 128 // cwd path
 
 // function to check if we're in a git repository 
 int is_git_repository() {
@@ -119,7 +119,7 @@ int main(int argc, char *argv[]) {
     // Print the formatted date and time
     printf("Current date and time: %s\n", timestamp);
 
-    // check if we're in a git repository
+    // Check if we're in a git repository
     if (is_git_repository()) {
         char *url = get_remote_url();
         if (url) {
@@ -130,32 +130,19 @@ int main(int argc, char *argv[]) {
             parse_url(url, username, repo_name);
             printf("Username: %s, Repository Name: %s\n", username, repo_name);
 
-            // Check if directory exists
-            if (!dir_exists(username)) {
-                // Create directory
-                if (mkdir(username, 0777) != 0) {
-                    perror("Failed to create directory");
-                } else {
-                    printf("Directory '%s' created.\n", username);
+            // Create the full path for the username directory under target_dir
+            char user_dir[FILE_PATH_MAX];
+            snprintf(user_dir, sizeof(user_dir), "%s/%s", target_dir, username);
 
-                    // Create 'temp' subdirectory inside the 'username' directory
-                    char temp_path[FILE_PATH_MAX];
-                    snprintf(temp_path, sizeof(temp_path), "%s/temp", username);
-                    
-                    if (mkdir(temp_path, 0777) != 0) {
-                        perror("Failed to create 'temp' subdirectory");
-                    } else {
-                        printf("Subdirectory '%s' created.\n", temp_path);
-                    }
-                }
+            // Check if directory exists
+            if (!dir_exists(user_dir)) {
+                create_directory(user_dir);
             } else {
-                printf("Directory '%s' already exists.\n", username);
+                printf("Directory '%s' already exists.\n", user_dir);
             }
 
-            size_t file_path_length = strlen(username) + strlen(repo_name) + strlen("/temp/") + strlen(".txt") + 1;
-
-            // Format the string into the buffer
-            snprintf(file_path, sizeof(file_path), "%s/temp/%s.txt", username, repo_name);
+            // Prepare the file path in the username directory
+            snprintf(file_path, sizeof(file_path), "%s/%s.md", user_dir, repo_name);
 
             if (!file_exists(file_path)) {
                 // Create file
@@ -175,28 +162,39 @@ int main(int argc, char *argv[]) {
         }
     } else {
         printf("Not a Git repository. Creating note in a temp location\n");
-        if (snprintf(file_path, sizeof(file_path), "%s/temp/%s.txt", target_dir, timestamp) >= sizeof(file_path)) {
+
+        // Use target_dir and timestamp to create the note file
+        if (snprintf(file_path, sizeof(file_path), "%s/temp/%s.md", target_dir, timestamp) >= sizeof(file_path)) {
             fprintf(stderr, "File path is too long.\n");
             return EXIT_FAILURE;
         }
-     }
 
-    // Ensure file path is properly set for opening in Vim
-    if (!file_exists(file_path)) {
-        FILE *file = fopen(file_path, "w");
-        if (file == NULL) {
-            perror("Error opening file");
-            return EXIT_FAILURE;
+        // Ensure the temp directory exists
+        char temp_dir[FILE_PATH_MAX];
+        snprintf(temp_dir, sizeof(temp_dir), "%s/temp", target_dir);
+
+        if (!dir_exists(temp_dir)) {
+            create_directory(temp_dir);
         }
 
-        if (argc > 1) {
-            // Write the command-line argument to the file
-            fprintf(file, "Hello, World!\n");
-            fputs(argv[1], file);
-        } else {
+        // Create the note file in the temp directory
+        if (!file_exists(file_path)) {
+            FILE *file = fopen(file_path, "w");
+            if (file == NULL) {
+                perror("Error opening file");
+                return EXIT_FAILURE;
+            }
+
+            if (argc > 1) {
+                // Write the command-line argument to the file
+                fprintf(file, "Hello, World!\n");
+                fputs(argv[1], file);
+            }
             fclose(file);
+        } else {
+            printf("File '%s' already exists.\n", file_path);
         }
-    } 
+    }
 
     // Open the file in Vim
     printf("Opening Vim...\n");
