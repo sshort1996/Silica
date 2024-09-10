@@ -73,18 +73,18 @@ void generate_timestamp(char *timestamp, size_t size) {
     }
 }
 
-// Function to extract the username and repository name from the URL
-void parse_url(const char* url, char* username, char* repo_name) {
+// Function to extract the git_organisation and repository name from the URL
+void parse_url(const char* url, char* git_organisation, char* repo_name) {
     char *at_ptr, *colon_ptr, *slash_ptr;
 
     at_ptr = strchr(url, '@'); // For SSH URLs
     colon_ptr = strchr(url, ':'); // For SSH URLs
     slash_ptr = strstr(url, "/"); // For HTTPS URLs
 
-    if (at_ptr && colon_ptr) { // SSH format: git@github.com:username/repo.git
-        sscanf(colon_ptr + 1, "%[^/]/%[^.]", username, repo_name);
-    } else if (slash_ptr) { // HTTPS format: https://github.com/username/repo.git
-        sscanf(slash_ptr + 1, "%[^/]/%[^.]", username, repo_name);
+    if (at_ptr && colon_ptr) { // SSH format: git@github.com:git_organisation/repo.git
+        sscanf(colon_ptr + 1, "%[^/]/%[^.]", git_organisation, repo_name);
+    } else if (slash_ptr) { // HTTPS format: https://github.com/git_organisation/repo.git
+        sscanf(slash_ptr + 1, "%[^/]/%[^.]", git_organisation, repo_name);
     }
 }
 
@@ -123,16 +123,16 @@ int main(int argc, char *argv[]) {
     if (is_git_repository()) {
         char *url = get_remote_url();
         if (url) {
-            char username[256] = {0};
+            char git_organisation[256] = {0};
             char repo_name[256] = {0};
 
-            // Parse the URL to get the username and repository name
-            parse_url(url, username, repo_name);
-            printf("Username: %s, Repository Name: %s\n", username, repo_name);
+            // Parse the URL to get the git_organisation and repository name
+            parse_url(url, git_organisation, repo_name);
+            printf("git Organisation: %s, Repository Name: %s\n", git_organisation, repo_name);
 
-            // Create the full path for the username directory under target_dir
+            // Create the full path for the git_organisation directory under target_dir
             char user_dir[FILE_PATH_MAX];
-            snprintf(user_dir, sizeof(user_dir), "%s/%s", target_dir, username);
+            snprintf(user_dir, sizeof(user_dir), "%s/%s", target_dir, git_organisation);
 
             // Check if directory exists
             if (!dir_exists(user_dir)) {
@@ -141,7 +141,7 @@ int main(int argc, char *argv[]) {
                 printf("Directory '%s' already exists.\n", user_dir);
             }
 
-            // Prepare the file path in the username directory
+            // Prepare the file path in the git_organisation directory
             snprintf(file_path, sizeof(file_path), "%s/%s.md", user_dir, repo_name);
 
             if (!file_exists(file_path)) {
