@@ -5,8 +5,8 @@ A CLI tool for managing Obsidian notes via neovim. WIP.
 ## Installing
 Clone the directory, then compile using 
 `gcc -o obs main.c utils.c`
-Then move the resulting executable into `/bin` or similar on MacOS, or any other directory either on system PATH, or add your own. Give execute permissions on the executable with
-`chmod +x /bin/obs`
+Then move the resulting executable into `/usr/local/bin` or similar on MacOS, or any other directory either on system PATH, or add your own. Give execute permissions on the executable with
+`sudo chmod +x /usr/local/bin/obs`
 
 ## Usage
 Tool has three options currently (more to be added):
