@@ -4,11 +4,18 @@
 #include <string.h>
 #include <unistd.h>
 #include "utils.h"
+#include <readline/readline.h>
+#include <readline/history.h>
+#include <dirent.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <unistd.h>
 
 #define FILE_PATH_MAX 512
 #define TIMESTAMP_MAX 80
 
 const char target_dir[] = "/Users/shaneshort/Documents/Notes/obs-cli/obs-cli/";
+char current_dir[1024];
 
 void create_note();
 void edit_note(const char *filepath);
@@ -123,21 +130,41 @@ void create_note() {
 }
 
 
-// Function to edit an existing note
 void edit_note(const char *filepath) {
-    if (!file_exists(filepath)) {
-        fprintf(stderr, "Error: File '%s' does not exist.\n", filepath);
-        return;
-    }
+    // Set the current directory for autocomplete
+    set_current_dir(target_dir);
     
-    char vim_command[FILE_PATH_MAX + 6];
-    snprintf(vim_command, sizeof(vim_command), "nvim %s", filepath);
-    int status = system(vim_command);
-    if (status == -1) {
-        perror("Error executing Neovim");
+    // Prompt for file path with auto-completion
+    char *input;
+    while ((input = readline("Enter file path: ")) != NULL) {
+        if (strlen(input) > 0) {
+            add_history(input);
+
+            char full_path[FILE_PATH_MAX];
+            snprintf(full_path, sizeof(full_path), "%s/%s", current_dir, input);
+
+            struct stat path_stat;
+            if (stat(full_path, &path_stat) == 0) {
+                if (S_ISDIR(path_stat.st_mode)) {
+                    change_directory(full_path);
+                    printf("Changed directory to: %s\n", current_dir);
+                } else if (S_ISREG(path_stat.st_mode)) {
+                    printf("You are opening the file: %s\n", full_path);
+                    char vim_command[FILE_PATH_MAX + 6];
+                    snprintf(vim_command, sizeof(vim_command), "nvim %s", full_path);
+                    int status = system(vim_command);
+                    if (status == -1) {
+                        perror("Error executing Neovim");
+                    }
+                    break; // Exit the loop after opening the file
+                }
+            } else {
+                printf("Invalid path: %s\n", input);
+            }
+        }
+        free(input);
     }
 }
-
 // Function to list all notes
 void list_notes() {
     char list_command[FILE_PATH_MAX];
