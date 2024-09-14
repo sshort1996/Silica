@@ -3,7 +3,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
-#include "utils.h"
+#include "../utils/utils.h"
 #include <readline/readline.h>
 #include <readline/history.h>
 #include <dirent.h>
@@ -12,21 +12,40 @@
 
 #define FILE_PATH_MAX 512
 #define TIMESTAMP_MAX 80
+#define OBS_CONFIG_FILE ".obs"
 
-const char target_dir[] = "/Users/shaneshort/Documents/Notes/obs-cli/obs-cli/";
+char target_dir[128];
 char current_dir[1024];
 
 void create_note();
 void edit_note(const char *filepath);
 void list_notes();
+void config_target_dir();
+int load_target_dir_from_config();
+void write_target_dir_to_config(const char *path);
 
 int main(int argc, char *argv[]) {
+    // Check if 'config' command is issued before attempting to load the target directory
+    if (argc >= 2 && strcmp(argv[1], "config") == 0) {
+        config_target_dir(); // Handle config command immediately
+        return EXIT_SUCCESS;
+    }
+
+    // Attempt to load the target directory from the config file
+    if (!load_target_dir_from_config()) {
+        fprintf(stderr, "Target directory not configured.\n");
+        fprintf(stderr, "Run '%s config' to set the target directory.\n", argv[0]);
+        return EXIT_FAILURE;
+    }
+
+    // Proceed with other commands
     if (argc < 2) {
         fprintf(stderr, "Usage: %s <command> [arguments]\n", argv[0]);
         fprintf(stderr, "Commands:\n");
         fprintf(stderr, "  add                  Create a new note\n");
         fprintf(stderr, "  edit <filepath>      Edit an existing note\n");
         fprintf(stderr, "  list                 List all notes\n");
+        fprintf(stderr, "  config               Set or update the target directory\n");
         return EXIT_FAILURE;
     }
 
@@ -43,6 +62,7 @@ int main(int argc, char *argv[]) {
 
     return EXIT_SUCCESS;
 }
+
 
 // Function to create a new note
 void create_note() {
@@ -173,5 +193,61 @@ void list_notes() {
     if (status == -1) {
         perror("Error listing notes");
     }
+}
+
+// Function to configure the target directory
+void config_target_dir() {
+    char *input = readline("Enter the target directory path: ");
+    if (input && strlen(input) > 0) {
+        write_target_dir_to_config(input);
+        printf("Target directory set to: %s\n", input);
+        free(input);
+    } else {
+        fprintf(stderr, "Invalid directory path.\n");
+    }
+}
+
+// Function to load the target directory from the ~/.obs config file
+int load_target_dir_from_config() {
+    char config_path[FILE_PATH_MAX];
+    snprintf(config_path, sizeof(config_path), "%s/%s", getenv("HOME"), OBS_CONFIG_FILE);
+
+    FILE *file = fopen(config_path, "r");
+    if (!file) {
+        return 0; // Config file doesn't exist
+    }
+
+    if (fgets(target_dir, sizeof(target_dir), file) == NULL) {
+        fclose(file);
+        return 0; // Failed to read target directory
+    }
+
+    // Remove trailing newline if present
+    size_t len = strlen(target_dir);
+    if (len > 0 && target_dir[len - 1] == '\n') {
+        target_dir[len - 1] = '\0';
+    }
+
+    fclose(file);
+    return 1; // Successfully loaded target directory
+}
+
+// Function to write the target directory to the ~/.obs config file
+void write_target_dir_to_config(const char *path) {
+    char config_path[FILE_PATH_MAX];
+    snprintf(config_path, sizeof(config_path), "%s/%s", getenv("HOME"), OBS_CONFIG_FILE);
+
+    FILE *file = fopen(config_path, "w");
+    if (!file) {
+        perror("Failed to open config file");
+        return;
+    }
+
+    fprintf(file, "%s\n", path);
+    fclose(file);
+
+    // Update the global target_dir variable
+    strncpy(target_dir, path, sizeof(target_dir) - 1);
+    target_dir[sizeof(target_dir) - 1] = '\0'; // Ensure null termination
 }
 
