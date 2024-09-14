@@ -8,6 +8,8 @@
 #include <errno.h>
 #include <readline/readline.h>
 #include <readline/history.h>
+#include <dirent.h>
+#include <unistd.h>
 
 #define CWD_PATH_SIZE 128
 

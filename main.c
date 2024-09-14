@@ -9,7 +9,6 @@
 #include <dirent.h>
 #include <sys/types.h>
 #include <sys/stat.h>
-#include <unistd.h>
 
 #define FILE_PATH_MAX 512
 #define TIMESTAMP_MAX 80
@@ -34,10 +33,6 @@ int main(int argc, char *argv[]) {
     if (strcmp(argv[1], "add") == 0) {
         create_note();
     } else if (strcmp(argv[1], "edit") == 0) {
-        if (argc < 3) {
-            fprintf(stderr, "Error: 'edit' command requires a filepath argument.\n");
-            return EXIT_FAILURE;
-        }
         edit_note(argv[2]);
     } else if (strcmp(argv[1], "list") == 0) {
         list_notes();
@@ -131,9 +126,13 @@ void create_note() {
 
 
 void edit_note(const char *filepath) {
-    // Set the current directory for autocomplete
+    // Set the current directory for autocomplete to the target directory
     set_current_dir(target_dir);
-    
+    printf("current dir: %s\n", current_dir);
+
+    // Configure the Readline auto-completion function to use our generator
+    rl_attempted_completion_function = complete;
+
     // Prompt for file path with auto-completion
     char *input;
     while ((input = readline("Enter file path: ")) != NULL) {
@@ -165,6 +164,7 @@ void edit_note(const char *filepath) {
         free(input);
     }
 }
+
 // Function to list all notes
 void list_notes() {
     char list_command[FILE_PATH_MAX];

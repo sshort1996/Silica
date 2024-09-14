@@ -16,6 +16,9 @@ int dir_exists(const char *path);
 int file_exists(const char *path);
 char **complete(const char *text, int start, int end);
 char *generator(const char *text, int state);
+void set_current_dir(const char *path);
+void change_directory(const char *path);
+extern char current_dir[1024];
 
 #endif // UTILS_H
 
