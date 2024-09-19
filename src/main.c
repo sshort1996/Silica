@@ -13,8 +13,10 @@
 #define FILE_PATH_MAX 512
 #define TIMESTAMP_MAX 80
 #define OBS_CONFIG_FILE ".obs"
+#define MAX_LINE_LENGTH 256
 
 char target_dir[128];
+char api_key[128];
 char current_dir[1024];
 
 void create_note();
@@ -22,9 +24,19 @@ void edit_note(const char *filepath);
 void list_notes();
 void config_target_dir();
 int load_target_dir_from_config();
-void write_target_dir_to_config(const char *path);
-
+void write_target_dir_to_config(const char *path, const char *key); 
+void send_prompt(const char *root_directory, const char *prompt); 
+                 
 int main(int argc, char *argv[]) {
+
+    char original_dir[FILE_PATH_MAX];
+
+    // Save the current working directory
+    if (getcwd(original_dir, sizeof(original_dir)) == NULL) {
+        perror("getcwd");
+        return EXIT_FAILURE;
+    }
+
     // Check if 'config' command is issued before attempting to load the target directory
     if (argc >= 2 && strcmp(argv[1], "config") == 0) {
         config_target_dir(); // Handle config command immediately
@@ -37,6 +49,16 @@ int main(int argc, char *argv[]) {
         fprintf(stderr, "Run '%s config' to set the target directory.\n", argv[0]);
         return EXIT_FAILURE;
     }
+    printf("Target directory: %s", target_dir);
+    printf("open ai key: %s", api_key);
+
+    char prompt[512];
+    printf("Enter your prompt: ");
+    fgets(prompt, sizeof(prompt), stdin);
+    // Remove the trailing newline
+    prompt[strcspn(prompt, "\n")] = 0;
+
+    send_prompt(original_dir, prompt);
 
     // Proceed with other commands
     if (argc < 2) {
@@ -63,6 +85,29 @@ int main(int argc, char *argv[]) {
     return EXIT_SUCCESS;
 }
 
+void send_prompt(const char *root_directory, const char *prompt) {
+    char command[1024];
+    FILE *fp;
+
+    // Prepare the Python command with the root directory and script path
+    snprintf(command, sizeof(command), "python3 %s/src/file_parsing.py \"%s\"", root_directory, prompt);
+
+    // Open the command for reading
+    fp = popen(command, "r");
+    if (fp == NULL) {
+        printf("Failed to run command\n");
+        exit(1);
+    }
+
+    // Read the output from the Python script
+    char result[2048];
+    while (fgets(result, sizeof(result), fp) != NULL) {
+        printf("%s", result);
+    }
+
+    // Close the process
+    pclose(fp);
+}
 
 // Function to create a new note
 void create_note() {
@@ -195,19 +240,35 @@ void list_notes() {
     }
 }
 
-// Function to configure the target directory
 void config_target_dir() {
-    char *input = readline("Enter the target directory path: ");
-    if (input && strlen(input) > 0) {
-        write_target_dir_to_config(input);
-        printf("Target directory set to: %s\n", input);
-        free(input);
-    } else {
+    // Prompt for the target directory
+    char *target_input = readline("Enter the target directory path: ");
+    if (!target_input || strlen(target_input) == 0) {
         fprintf(stderr, "Invalid directory path.\n");
+        free(target_input);
+        return;
     }
+
+    // Prompt for the API key
+    char *api_input = readline("Enter the OpenAI API key: ");
+    if (!api_input || strlen(api_input) == 0) {
+        fprintf(stderr, "Invalid API key.\n");
+        free(target_input);
+        free(api_input);
+        return;
+    }
+
+    // Write both values to the config file
+    write_target_dir_to_config(target_input, api_input);
+
+    printf("Target directory set to: %s\n", target_input);
+    printf("API key set.\n");
+
+    // Free the allocated memory for inputs
+    free(target_input);
+    free(api_input);
 }
 
-// Function to load the target directory from the ~/.obs config file
 int load_target_dir_from_config() {
     char config_path[FILE_PATH_MAX];
     snprintf(config_path, sizeof(config_path), "%s/%s", getenv("HOME"), OBS_CONFIG_FILE);
@@ -217,23 +278,38 @@ int load_target_dir_from_config() {
         return 0; // Config file doesn't exist
     }
 
-    if (fgets(target_dir, sizeof(target_dir), file) == NULL) {
-        fclose(file);
-        return 0; // Failed to read target directory
-    }
+    char line[MAX_LINE_LENGTH];
+    while (fgets(line, sizeof(line), file)) {
+        // Remove trailing newline if present
+        size_t len = strlen(line);
+        if (len > 0 && line[len - 1] == '\n') {
+            line[len - 1] = '\0';
+        }
 
-    // Remove trailing newline if present
-    size_t len = strlen(target_dir);
-    if (len > 0 && target_dir[len - 1] == '\n') {
-        target_dir[len - 1] = '\0';
+        // Check for the target_dir line
+        if (strncmp(line, "TARGET_DIR=", 11) == 0) {
+            strncpy(target_dir, line + 11, sizeof(target_dir) - 1);
+            target_dir[sizeof(target_dir) - 1] = '\0';  // Ensure null-termination
+        }
+
+        // Check for the api_key line
+        else if (strncmp(line, "OPEN_AI_API_KEY=", 16) == 0) {
+            strncpy(api_key, line + 16, sizeof(api_key) - 1);
+            api_key[sizeof(api_key) - 1] = '\0';  // Ensure null-termination
+        }
     }
 
     fclose(file);
-    return 1; // Successfully loaded target directory
+
+    // Verify both target_dir and api_key were loaded
+    if (strlen(target_dir) > 0 && strlen(api_key) > 0) {
+        return 1; // Successfully loaded target_dir and api_key
+    }
+
+    return 0; // Failed to load both values
 }
 
-// Function to write the target directory to the ~/.obs config file
-void write_target_dir_to_config(const char *path) {
+void write_target_dir_to_config(const char *path, const char *key) {
     char config_path[FILE_PATH_MAX];
     snprintf(config_path, sizeof(config_path), "%s/%s", getenv("HOME"), OBS_CONFIG_FILE);
 
@@ -243,11 +319,16 @@ void write_target_dir_to_config(const char *path) {
         return;
     }
 
-    fprintf(file, "%s\n", path);
+    // Write the target directory and the API key to the config file
+    fprintf(file, "TARGET_DIR=%s\n", path);
+    fprintf(file, "OPEN_AI_API_KEY=%s\n", key);
     fclose(file);
 
-    // Update the global target_dir variable
+    // Update the global target_dir and api_key variables
     strncpy(target_dir, path, sizeof(target_dir) - 1);
     target_dir[sizeof(target_dir) - 1] = '\0'; // Ensure null termination
+
+    strncpy(api_key, key, sizeof(api_key) - 1);
+    api_key[sizeof(api_key) - 1] = '\0'; // Ensure null termination
 }
 
