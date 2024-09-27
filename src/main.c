@@ -18,6 +18,7 @@
 char target_dir[128];
 char api_key[128];
 char current_dir[1024];
+char original_dir[FILE_PATH_MAX];
 
 void create_note();
 void edit_note(const char *filepath);
@@ -25,11 +26,9 @@ void list_notes();
 void config_target_dir();
 int load_target_dir_from_config();
 void write_target_dir_to_config(const char *path, const char *key); 
-void send_prompt(const char *root_directory, const char *prompt); 
-                 
-int main(int argc, char *argv[]) {
+char *send_prompt(const char *root_directory, const char *prompt, long prompt_size);     
 
-    char original_dir[FILE_PATH_MAX];
+int main(int argc, char *argv[]) {
 
     // Save the current working directory
     if (getcwd(original_dir, sizeof(original_dir)) == NULL) {
@@ -49,16 +48,6 @@ int main(int argc, char *argv[]) {
         fprintf(stderr, "Run '%s config' to set the target directory.\n", argv[0]);
         return EXIT_FAILURE;
     }
-    printf("Target directory: %s", target_dir);
-    printf("open ai key: %s", api_key);
-
-    char prompt[512];
-    printf("Enter your prompt: ");
-    fgets(prompt, sizeof(prompt), stdin);
-    // Remove the trailing newline
-    prompt[strcspn(prompt, "\n")] = 0;
-
-    send_prompt(original_dir, prompt);
 
     // Proceed with other commands
     if (argc < 2) {
@@ -85,28 +74,46 @@ int main(int argc, char *argv[]) {
     return EXIT_SUCCESS;
 }
 
-void send_prompt(const char *root_directory, const char *prompt) {
-    char command[1024];
+char *send_prompt(const char *root_directory, const char *prompt, long prompt_size) {
     FILE *fp;
+    char *new_filename = malloc(2048);  // Allocate memory for the new filename
+
+    // Calculate the required size for the command string
+    size_t command_size = strlen(root_directory) + prompt_size + 50; // extra space for "python3 " and other parts of the command
+    char *command = malloc(command_size);
+
+    if (command == NULL) {
+        perror("malloc failed");
+        exit(EXIT_FAILURE);
+    }
 
     // Prepare the Python command with the root directory and script path
-    snprintf(command, sizeof(command), "python3 %s/src/file_parsing.py \"%s\"", root_directory, prompt);
+    snprintf(command, command_size, "python3 %s/src/file_parsing.py \"%s\"", root_directory, prompt);
 
     // Open the command for reading
     fp = popen(command, "r");
     if (fp == NULL) {
         printf("Failed to run command\n");
+        free(command);
+        free(new_filename);
         exit(1);
     }
 
-    // Read the output from the Python script
-    char result[2048];
-    while (fgets(result, sizeof(result), fp) != NULL) {
-        printf("%s", result);
+    // Read the output from the Python script (expected to be the new filename)
+    if (fgets(new_filename, 2048, fp) != NULL) {
+        // Remove the trailing newline character if any
+        new_filename[strcspn(new_filename, "\n")] = '\0';
+    } else {
+        perror("Error reading from Python script");
+        free(new_filename);
+        new_filename = NULL;
     }
 
-    // Close the process
+    // Close the process and free the command string
     pclose(fp);
+    free(command);
+
+    return new_filename;  // Return the new filename
 }
 
 // Function to create a new note
@@ -125,7 +132,7 @@ void create_note() {
 
             char user_dir[FILE_PATH_MAX];
             char repo_dir[FILE_PATH_MAX];
-            
+
             // Create the path up to the git organization folder
             snprintf(user_dir, sizeof(user_dir), "%s/%s", target_dir, git_organisation);
 
@@ -152,9 +159,11 @@ void create_note() {
                 fclose(fp);
             } else {
                 perror("Failed to create file");
+                return; // Early exit on error
             }
         } else {
             printf("Failed to retrieve remote URL.\n");
+            return; // Early exit on error
         }
     } else {
         // Not a Git repository, create note in a temporary location
@@ -177,6 +186,7 @@ void create_note() {
             printf("File '%s' created.\n", file_path);
         } else {
             perror("Error opening file");
+            return; // Early exit on error
         }
     }
 
@@ -187,13 +197,63 @@ void create_note() {
     if (status == -1) {
         perror("Error executing Neovim");
     }
+
+    // After Neovim closes, read the file contents for renaming
+    FILE *file = fopen(file_path, "r");
+    if (file == NULL) {
+        perror("Error opening file for reading");
+        return; // Early exit on error
+    }
+
+    fseek(file, 0, SEEK_END);
+    long file_size = ftell(file);
+    fseek(file, 0, SEEK_SET);
+
+    char *file_contents = malloc(file_size + 1);
+    if (file_contents) {
+        fread(file_contents, 1, file_size, file);
+        file_contents[file_size] = '\0'; // Null-terminate the string
+        fclose(file);
+
+        // Pass the file contents to the processing function
+        char *new_filename = send_prompt(original_dir, file_contents, file_size);
+        printf("Suggested filename: %s\n", new_filename);
+
+        // Get the directory part of the file_path
+        char *last_slash = strrchr(file_path, '/'); // Find the last slash in the path
+        if (last_slash != NULL) {
+            // Extract the directory path
+            size_t dir_length = last_slash - file_path + 1; // +1 to include the slash
+            char file_dir[FILE_PATH_MAX];
+            strncpy(file_dir, file_path, dir_length);
+            file_dir[dir_length] = '\0'; // Null-terminate the directory string
+
+            // Rename the file if a new filename was returned
+            if (new_filename && strlen(new_filename) > 0) {
+                char new_file_path[FILE_PATH_MAX];
+                snprintf(new_file_path, sizeof(new_file_path), "%s%s.md", file_dir, new_filename); // Use file_dir instead of current_dir
+                if (rename(file_path, new_file_path) == 0) {
+                    printf("File renamed to: %s\n", new_file_path);
+                } else {
+                    perror("Error renaming file");
+                }
+            } else {
+                printf("No new filename returned.\n");
+            }
+        }
+
+        free(file_contents);
+        free(new_filename);
+    } else {
+        perror("Memory allocation failed");
+    }
 }
 
 
 void edit_note(const char *filepath) {
     // Set the current directory for autocomplete to the target directory
     set_current_dir(target_dir);
-    printf("current dir: %s\n", current_dir);
+    printf("Current directory: %s\n", current_dir);
 
     // Configure the Readline auto-completion function to use our generator
     rl_attempted_completion_function = complete;
@@ -214,13 +274,66 @@ void edit_note(const char *filepath) {
                     printf("Changed directory to: %s\n", current_dir);
                 } else if (S_ISREG(path_stat.st_mode)) {
                     printf("You are opening the file: %s\n", full_path);
-                    char vim_command[FILE_PATH_MAX + 6];
+                    
+                    // Open the file in Neovim
+                    char vim_command[FILE_PATH_MAX + 6];  // Extra space for "nvim " and null terminator
                     snprintf(vim_command, sizeof(vim_command), "nvim %s", full_path);
-                    int status = system(vim_command);
-                    if (status == -1) {
+                    if (system(vim_command) == -1) {
                         perror("Error executing Neovim");
                     }
-                    break; // Exit the loop after opening the file
+
+                    // Read the file contents after closing Neovim
+                    FILE *file = fopen(full_path, "r");
+                    if (file == NULL) {
+                        perror("Error opening file for reading");
+                        free(input);
+                        continue; 
+                    }
+
+                    fseek(file, 0, SEEK_END);
+                    long file_size = ftell(file);
+                    fseek(file, 0, SEEK_SET);
+
+                    char *file_contents = malloc(file_size + 1);
+                    if (file_contents) {
+                        fread(file_contents, 1, file_size, file);
+                        file_contents[file_size] = '\0'; 
+                        fclose(file);
+
+                        // Send the file contents to src/file-parsing.py to create a relevant filename
+                        char *new_filename = send_prompt(original_dir, file_contents, file_size);
+                        printf("Suggested filename: %s\n", new_filename);
+
+                        // Get the directory part of the full_path
+                        char *last_slash = strrchr(full_path, '/');
+                        if (last_slash != NULL) {
+                            // Extract the directory path
+                            size_t dir_length = last_slash - full_path + 1;
+                            char file_dir[FILE_PATH_MAX];
+                            strncpy(file_dir, full_path, dir_length);
+                            file_dir[dir_length] = '\0';
+
+                            // Rename the file if a new filename was returned
+                            if (new_filename && strlen(new_filename) > 0) {
+                                char new_file_path[FILE_PATH_MAX];
+                                snprintf(new_file_path, sizeof(new_file_path), "%s%s.md", file_dir, new_filename);
+                                if (rename(full_path, new_file_path) == 0) {
+                                    printf("File renamed to: %s\n", new_file_path);
+                                } else {
+                                    perror("Error renaming file");
+                                }
+                            } else {
+                                printf("No new filename returned.\n");
+                            }
+                        }
+
+                        free(file_contents);
+                        free(new_filename);
+                    } else {
+                        perror("Memory allocation failed");
+                        fclose(file);
+                    }
+                    break;
                 }
             } else {
                 printf("Invalid path: %s\n", input);
