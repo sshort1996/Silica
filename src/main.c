@@ -12,7 +12,7 @@
 
 #define FILE_PATH_MAX 512
 #define TIMESTAMP_MAX 80
-#define OBS_CONFIG_FILE ".obs"
+#define OBS_CONFIG_FILE "obs/.config"
 #define MAX_LINE_LENGTH 256
 
 char target_dir[128];
@@ -88,7 +88,7 @@ char *send_prompt(const char *root_directory, const char *prompt, long prompt_si
     }
 
     // Prepare the Python command with the root directory and script path
-    snprintf(command, command_size, "python3 %s/src/file_parsing.py \"%s\"", root_directory, prompt);
+    snprintf(command, command_size, "python3 ~/obs/file_parsing.py \"%s\"", prompt);
 
     // Open the command for reading
     fp = popen(command, "r");
