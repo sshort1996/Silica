@@ -4,7 +4,7 @@ import configparser
 import sys
 import json
 
-file_path = os.path.expanduser('~/.obs')
+file_path = os.path.expanduser('~/obs/.config')
 config = configparser.ConfigParser()
 
 with open(file_path, 'r') as file:
