@@ -22,11 +22,12 @@ char original_dir[FILE_PATH_MAX];
 
 void create_note();
 void edit_note(const char *filepath);
+void clean_note();  // New function prototype
 void list_notes();
 void config_target_dir();
 int load_target_dir_from_config();
-void write_target_dir_to_config(const char *path, const char *key); 
-char *send_prompt(const char *root_directory, const char *prompt, long prompt_size);     
+void write_target_dir_to_config(const char *path, const char *key);
+char *send_prompt(const char *root_directory, const char *prompt, long prompt_size);
 
 int main(int argc, char *argv[]) {
 
@@ -54,6 +55,7 @@ int main(int argc, char *argv[]) {
         fprintf(stderr, "Commands:\n");
         fprintf(stderr, "  add                  Create a new note\n");
         fprintf(stderr, "  edit <filepath>      Edit an existing note\n");
+        fprintf(stderr, "  clean                Clean and parse a note\n");  // New command
         fprintf(stderr, "  list                 List all notes\n");
         fprintf(stderr, "  config               Set or update the target directory\n");
         return EXIT_FAILURE;
@@ -63,6 +65,8 @@ int main(int argc, char *argv[]) {
         create_note();
     } else if (strcmp(argv[1], "edit") == 0) {
         edit_note(argv[2]);
+    } else if (strcmp(argv[1], "clean") == 0) {  // Handle clean command
+        clean_note();
     } else if (strcmp(argv[1], "list") == 0) {
         list_notes();
     } else {
@@ -72,6 +76,94 @@ int main(int argc, char *argv[]) {
 
     return EXIT_SUCCESS;
 }
+
+
+// New function to clean a note
+void clean_note() {
+    // Set the current directory for autocomplete to the target directory
+    set_current_dir(target_dir);
+    printf("Current directory: %s\n", current_dir);
+
+    // Configure the Readline auto-completion function to use our generator
+    rl_attempted_completion_function = complete;
+
+    // Prompt for file path with auto-completion
+    char *input;
+    while ((input = readline("Enter file path: ")) != NULL) {
+        if (strlen(input) > 0) {
+            add_history(input);
+
+            char full_path[FILE_PATH_MAX];
+            snprintf(full_path, sizeof(full_path), "%s/%s", current_dir, input);
+
+            struct stat path_stat;
+            if (stat(full_path, &path_stat) == 0) {
+                if (S_ISREG(path_stat.st_mode)) {
+                    printf("You are processing the file: %s\n", full_path);
+
+                    // Read the file contents
+                    FILE *file = fopen(full_path, "r");
+                    if (file == NULL) {
+                        perror("Error opening file for reading");
+                        free(input);
+                        continue; 
+                    }
+
+                    fseek(file, 0, SEEK_END);
+                    long file_size = ftell(file);
+                    fseek(file, 0, SEEK_SET);
+
+                    char *file_contents = malloc(file_size + 1);
+                    if (file_contents) {
+                        fread(file_contents, 1, file_size, file);
+                        file_contents[file_size] = '\0'; 
+                        fclose(file);
+
+                        // Send the file contents to src/file-parsing.py to create a relevant filename
+                        char *new_filename = send_prompt(original_dir, file_contents, file_size);
+                        printf("Suggested filename: %s\n", new_filename);
+
+                        // Get the directory part of the full_path
+                        char *last_slash = strrchr(full_path, '/');
+                        if (last_slash != NULL) {
+                            // Extract the directory path
+                            size_t dir_length = last_slash - full_path + 1;
+                            char file_dir[FILE_PATH_MAX];
+                            strncpy(file_dir, full_path, dir_length);
+                            file_dir[dir_length] = '\0';
+
+                            // Rename the file if a new filename was returned
+                            if (new_filename && strlen(new_filename) > 0) {
+                                char new_file_path[FILE_PATH_MAX];
+                                snprintf(new_file_path, sizeof(new_file_path), "%s%s.md", file_dir, new_filename);
+                                if (rename(full_path, new_file_path) == 0) {
+                                    printf("File renamed to: %s\n", new_file_path);
+                                } else {
+                                    perror("Error renaming file");
+                                }
+                            } else {
+                                printf("No new filename returned.\n");
+                            }
+                        }
+
+                        free(file_contents);
+                        free(new_filename);
+                    } else {
+                        perror("Memory allocation failed");
+                        fclose(file);
+                    }
+                    break; // Exit the loop after processing the file
+                } else {
+                    printf("Invalid path: %s\n", full_path);
+                }
+            } else {
+                printf("Invalid path: %s\n", input);
+            }
+        }
+        free(input);
+    }
+}
+
 
 // Function to send the contents of a chosen file to open AI for parsing and return a filename
 char *send_prompt(const char *root_directory, const char *prompt, long prompt_size) {
@@ -282,13 +374,13 @@ int load_target_dir_from_config() {
         // Check for the target_dir line
         if (strncmp(line, "TARGET_DIR=", 11) == 0) {
             strncpy(target_dir, line + 11, sizeof(target_dir) - 1);
-            target_dir[sizeof(target_dir) - 1] = '\0';  // Ensure null-termination
+            target_dir[sizeof(target_dir) - 1] = '\0';
         }
 
         // Check for the api_key line
         else if (strncmp(line, "OPEN_AI_API_KEY=", 16) == 0) {
             strncpy(api_key, line + 16, sizeof(api_key) - 1);
-            api_key[sizeof(api_key) - 1] = '\0';  // Ensure null-termination
+            api_key[sizeof(api_key) - 1] = '\0';
         }
     }
 
