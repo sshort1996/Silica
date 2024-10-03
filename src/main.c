@@ -180,53 +180,6 @@ void create_note() {
     if (status == -1) {
         perror("Error executing Neovim");
     }
-
-    // After Neovim closes, read the file contents for renaming
-    FILE *file = fopen(file_path, "r");
-    if (file == NULL) {
-        perror("Error opening file for reading");
-        return;
-    }
-
-    fseek(file, 0, SEEK_END);
-    long file_size = ftell(file);
-    fseek(file, 0, SEEK_SET);
-
-    char *file_contents = malloc(file_size + 1);
-    if (file_contents) {
-        fread(file_contents, 1, file_size, file);
-        file_contents[file_size] = '\0'; // Null-terminate the string
-        fclose(file);
-
-        char *new_filename = send_prompt(original_dir, file_contents, file_size);
-        printf("Suggested filename: %s\n", new_filename);
-
-        char *last_slash = strrchr(file_path, '/'); // Find the last slash in the path for 
-                                                    // renaming the file in the same location
-        if (last_slash != NULL) {
-            size_t dir_length = last_slash - file_path + 1;
-            char file_dir[FILE_PATH_MAX];
-            strncpy(file_dir, file_path, dir_length);
-            file_dir[dir_length] = '\0';
-
-            if (new_filename && strlen(new_filename) > 0) {
-                char new_file_path[FILE_PATH_MAX];
-                snprintf(new_file_path, sizeof(new_file_path), "%s%s.md", file_dir, new_filename);
-                if (rename(file_path, new_file_path) == 0) {
-                    printf("File renamed to: %s\n", new_file_path);
-                } else {
-                    perror("Error renaming file");
-                }
-            } else {
-                printf("No new filename returned.\n");
-            }
-        }
-
-        free(file_contents);
-        free(new_filename);
-    } else {
-        perror("Memory allocation failed");
-    }
 }
 
 // Function for editing an existing note
@@ -260,58 +213,6 @@ void edit_note(const char *filepath) {
                     snprintf(vim_command, sizeof(vim_command), "nvim %s", full_path);
                     if (system(vim_command) == -1) {
                         perror("Error executing Neovim");
-                    }
-
-                    // Read the file contents after closing Neovim
-                    FILE *file = fopen(full_path, "r");
-                    if (file == NULL) {
-                        perror("Error opening file for reading");
-                        free(input);
-                        continue; 
-                    }
-
-                    fseek(file, 0, SEEK_END);
-                    long file_size = ftell(file);
-                    fseek(file, 0, SEEK_SET);
-
-                    char *file_contents = malloc(file_size + 1);
-                    if (file_contents) {
-                        fread(file_contents, 1, file_size, file);
-                        file_contents[file_size] = '\0'; 
-                        fclose(file);
-
-                        // Send the file contents to src/file-parsing.py to create a relevant filename
-                        char *new_filename = send_prompt(original_dir, file_contents, file_size);
-                        printf("Suggested filename: %s\n", new_filename);
-
-                        // Get the directory part of the full_path
-                        char *last_slash = strrchr(full_path, '/');
-                        if (last_slash != NULL) {
-                            // Extract the directory path
-                            size_t dir_length = last_slash - full_path + 1;
-                            char file_dir[FILE_PATH_MAX];
-                            strncpy(file_dir, full_path, dir_length);
-                            file_dir[dir_length] = '\0';
-
-                            // Rename the file if a new filename was returned
-                            if (new_filename && strlen(new_filename) > 0) {
-                                char new_file_path[FILE_PATH_MAX];
-                                snprintf(new_file_path, sizeof(new_file_path), "%s%s.md", file_dir, new_filename);
-                                if (rename(full_path, new_file_path) == 0) {
-                                    printf("File renamed to: %s\n", new_file_path);
-                                } else {
-                                    perror("Error renaming file");
-                                }
-                            } else {
-                                printf("No new filename returned.\n");
-                            }
-                        }
-
-                        free(file_contents);
-                        free(new_filename);
-                    } else {
-                        perror("Memory allocation failed");
-                        fclose(file);
                     }
                     break;
                 }
