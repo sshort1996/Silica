@@ -30,7 +30,7 @@ char *send_prompt(const char *root_directory, const char *prompt, long prompt_si
 
 int main(int argc, char *argv[]) {
 
-    // Save the current working directory
+    // Save the current working directory for use later in the file parsing script
     if (getcwd(original_dir, sizeof(original_dir)) == NULL) {
         perror("getcwd");
         return EXIT_FAILURE;
@@ -38,18 +38,17 @@ int main(int argc, char *argv[]) {
 
     // Check if 'config' command is issued before attempting to load the target directory
     if (argc >= 2 && strcmp(argv[1], "config") == 0) {
-        config_target_dir(); // Handle config command immediately
+        config_target_dir();
         return EXIT_SUCCESS;
     }
 
-    // Attempt to load the target directory from the config file
+    // Attempt to load the target directory from config file in obs/.config
     if (!load_target_dir_from_config()) {
         fprintf(stderr, "Target directory not configured.\n");
         fprintf(stderr, "Run '%s config' to set the target directory.\n", argv[0]);
         return EXIT_FAILURE;
     }
 
-    // Proceed with other commands
     if (argc < 2) {
         fprintf(stderr, "Usage: %s <command> [arguments]\n", argv[0]);
         fprintf(stderr, "Commands:\n");
@@ -74,12 +73,12 @@ int main(int argc, char *argv[]) {
     return EXIT_SUCCESS;
 }
 
+// Function to send the contents of a chosen file to open AI for parsing and return a filename
 char *send_prompt(const char *root_directory, const char *prompt, long prompt_size) {
     FILE *fp;
-    char *new_filename = malloc(2048);  // Allocate memory for the new filename
+    char *new_filename = malloc(2048);
 
-    // Calculate the required size for the command string
-    size_t command_size = strlen(root_directory) + prompt_size + 50; // extra space for "python3 " and other parts of the command
+    size_t command_size = strlen(root_directory) + prompt_size + 50;
     char *command = malloc(command_size);
 
     if (command == NULL) {
@@ -87,10 +86,8 @@ char *send_prompt(const char *root_directory, const char *prompt, long prompt_si
         exit(EXIT_FAILURE);
     }
 
-    // Prepare the Python command with the root directory and script path
     snprintf(command, command_size, "python3 ~/obs/file_parsing.py \"%s\"", prompt);
 
-    // Open the command for reading
     fp = popen(command, "r");
     if (fp == NULL) {
         printf("Failed to run command\n");
@@ -101,7 +98,6 @@ char *send_prompt(const char *root_directory, const char *prompt, long prompt_si
 
     // Read the output from the Python script (expected to be the new filename)
     if (fgets(new_filename, 2048, fp) != NULL) {
-        // Remove the trailing newline character if any
         new_filename[strcspn(new_filename, "\n")] = '\0';
     } else {
         perror("Error reading from Python script");
@@ -109,11 +105,10 @@ char *send_prompt(const char *root_directory, const char *prompt, long prompt_si
         new_filename = NULL;
     }
 
-    // Close the process and free the command string
     pclose(fp);
     free(command);
 
-    return new_filename;  // Return the new filename
+    return new_filename;
 }
 
 // Function to create a new note
@@ -133,52 +128,40 @@ void create_note() {
             char user_dir[FILE_PATH_MAX];
             char repo_dir[FILE_PATH_MAX];
 
-            // Create the path up to the git organization folder
             snprintf(user_dir, sizeof(user_dir), "%s/%s", target_dir, git_organisation);
-
-            // Ensure the git organization directory exists
             if (!dir_exists(user_dir)) {
                 create_directory(user_dir);
             }
 
-            // Create the path for the repository directory under the git organization
             snprintf(repo_dir, sizeof(repo_dir), "%s/%s", user_dir, repo_name);
-
-            // Ensure the repository directory exists
             if (!dir_exists(repo_dir)) {
                 create_directory(repo_dir);
             }
 
-            // Create the final file path including the timestamp as a subdirectory
             snprintf(file_path, sizeof(file_path), "%s/%s/%s.md", user_dir, repo_name, timestamp);
-
-            // Create the note file
             FILE *fp = fopen(file_path, "w");
             if (fp) {
                 printf("File '%s' created.\n", file_path);
                 fclose(fp);
             } else {
                 perror("Failed to create file");
-                return; // Early exit on error
+                return;
             }
         } else {
             printf("Failed to retrieve remote URL.\n");
-            return; // Early exit on error
+            return;
         }
     } else {
-        // Not a Git repository, create note in a temporary location
+        // Not a Git repository, create note in a '/temp' directory 
         char temp_dir[FILE_PATH_MAX];
-        snprintf(temp_dir, sizeof(temp_dir), "%s/temp", target_dir);
 
-        // Ensure the temp directory exists
+        snprintf(temp_dir, sizeof(temp_dir), "%s/temp", target_dir);
         if (!dir_exists(temp_dir)) {
             create_directory(temp_dir);
         }
 
-        // Create the file path using the timestamp as the filename in the temp directory
         snprintf(file_path, sizeof(file_path), "%s/temp/%s.md", target_dir, timestamp);
 
-        // Create the note file
         FILE *file = fopen(file_path, "w");
         if (file) {
             fprintf(file, "New note created.\n");
@@ -186,12 +169,12 @@ void create_note() {
             printf("File '%s' created.\n", file_path);
         } else {
             perror("Error opening file");
-            return; // Early exit on error
+            return;
         }
     }
 
-    // Open the created file in Neovim
-    char vim_command[FILE_PATH_MAX + 6];  // Extra space for "nvim " and null terminator
+    // Open the new file in Neovim
+    char vim_command[FILE_PATH_MAX + 6];
     snprintf(vim_command, sizeof(vim_command), "nvim %s", file_path);
     int status = system(vim_command);
     if (status == -1) {
@@ -202,7 +185,7 @@ void create_note() {
     FILE *file = fopen(file_path, "r");
     if (file == NULL) {
         perror("Error opening file for reading");
-        return; // Early exit on error
+        return;
     }
 
     fseek(file, 0, SEEK_END);
@@ -215,23 +198,20 @@ void create_note() {
         file_contents[file_size] = '\0'; // Null-terminate the string
         fclose(file);
 
-        // Pass the file contents to the processing function
         char *new_filename = send_prompt(original_dir, file_contents, file_size);
         printf("Suggested filename: %s\n", new_filename);
 
-        // Get the directory part of the file_path
-        char *last_slash = strrchr(file_path, '/'); // Find the last slash in the path
+        char *last_slash = strrchr(file_path, '/'); // Find the last slash in the path for 
+                                                    // renaming the file in the same location
         if (last_slash != NULL) {
-            // Extract the directory path
-            size_t dir_length = last_slash - file_path + 1; // +1 to include the slash
+            size_t dir_length = last_slash - file_path + 1;
             char file_dir[FILE_PATH_MAX];
             strncpy(file_dir, file_path, dir_length);
-            file_dir[dir_length] = '\0'; // Null-terminate the directory string
+            file_dir[dir_length] = '\0';
 
-            // Rename the file if a new filename was returned
             if (new_filename && strlen(new_filename) > 0) {
                 char new_file_path[FILE_PATH_MAX];
-                snprintf(new_file_path, sizeof(new_file_path), "%s%s.md", file_dir, new_filename); // Use file_dir instead of current_dir
+                snprintf(new_file_path, sizeof(new_file_path), "%s%s.md", file_dir, new_filename);
                 if (rename(file_path, new_file_path) == 0) {
                     printf("File renamed to: %s\n", new_file_path);
                 } else {
@@ -249,7 +229,7 @@ void create_note() {
     }
 }
 
-
+// Function for editing an existing note
 void edit_note(const char *filepath) {
     // Set the current directory for autocomplete to the target directory
     set_current_dir(target_dir);
@@ -276,7 +256,7 @@ void edit_note(const char *filepath) {
                     printf("You are opening the file: %s\n", full_path);
                     
                     // Open the file in Neovim
-                    char vim_command[FILE_PATH_MAX + 6];  // Extra space for "nvim " and null terminator
+                    char vim_command[FILE_PATH_MAX + 6];
                     snprintf(vim_command, sizeof(vim_command), "nvim %s", full_path);
                     if (system(vim_command) == -1) {
                         perror("Error executing Neovim");
@@ -388,12 +368,11 @@ int load_target_dir_from_config() {
 
     FILE *file = fopen(config_path, "r");
     if (!file) {
-        return 0; // Config file doesn't exist
+        return 0;
     }
 
     char line[MAX_LINE_LENGTH];
     while (fgets(line, sizeof(line), file)) {
-        // Remove trailing newline if present
         size_t len = strlen(line);
         if (len > 0 && line[len - 1] == '\n') {
             line[len - 1] = '\0';
@@ -416,10 +395,10 @@ int load_target_dir_from_config() {
 
     // Verify both target_dir and api_key were loaded
     if (strlen(target_dir) > 0 && strlen(api_key) > 0) {
-        return 1; // Successfully loaded target_dir and api_key
+        return 1;
     }
 
-    return 0; // Failed to load both values
+    return 0;
 }
 
 void write_target_dir_to_config(const char *path, const char *key) {
@@ -439,9 +418,9 @@ void write_target_dir_to_config(const char *path, const char *key) {
 
     // Update the global target_dir and api_key variables
     strncpy(target_dir, path, sizeof(target_dir) - 1);
-    target_dir[sizeof(target_dir) - 1] = '\0'; // Ensure null termination
+    target_dir[sizeof(target_dir) - 1] = '\0';
 
     strncpy(api_key, key, sizeof(api_key) - 1);
-    api_key[sizeof(api_key) - 1] = '\0'; // Ensure null termination
+    api_key[sizeof(api_key) - 1] = '\0';
 }
 
