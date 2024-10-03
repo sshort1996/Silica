@@ -18,7 +18,7 @@ Tool has four options currently (more to be added):
 Which when closed will be renamed as:
 ![listing-renamkd](static/listing-renamed.png)
 
-`obs add` will create a new note in either `/temp` or the git path. The contents of the file will be passed to the `file_parsing` method, which uses you rOpenAI key to parse the contents of the file and rename it (so don't add sensitive information to files currently, this will be added as an optional command line argument eventually rather than the default).
+`obs add` will create a new note in either `/temp` or the git path. The contents of the file will be passed to the `file_parsing` method, which uses your OpenAI key to parse the contents of the file and rename it (this is now handled by the `obs clean` option so that we can keep sensitive notes out of OpenAI's hands).
 
 `obs edit <filename>` is used to edit a previously existing note in the current working directory. This option uses the `readline` tool to give auto-complete suggestions for the file paths in the target directory.
 ![edit](static/edit.png)
