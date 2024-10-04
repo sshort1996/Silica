@@ -1,4 +1,4 @@
-# Obsidian-CLI
+# Silica CLI
 
 A CLI tool for managing Obsidian notes via neovim. WIP.
 
