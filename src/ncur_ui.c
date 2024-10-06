@@ -3,9 +3,11 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <unistd.h>
+#include <locale.h>
 
 #define ASCII_ART_FILE "/Users/shaneshort/Documents/Development/noodling/obs-cli/static/ascii_logo.txt"
-#define CONFIG_FILE_PATH "/Users/shaneshort/obs/.config" // Replace USERNAME with your actual username
+#define CONFIG_FILE_PATH "/Users/shaneshort/obs/.config"
+#define MAX_LINES_PER_PAGE 13 // Adjust this value as needed for your box height
 
 // Define menu options
 char *menu_items[] = {
@@ -55,42 +57,40 @@ void draw_rounded_box(int start_row, int start_col, int height, int width) {
 
 // Function to print multi-line text within a box
 void print_multiline(int start_row, int start_col, const char *message, int width) {
-    int message_length = strlen(message);
     int line_start = 0;
+    int message_length = strlen(message);
+
+    // Calculate the usable width inside the box (excluding the border)
+    int usable_width = width - 2;
 
     while (line_start < message_length) {
-        // Calculate the length of the current line
-        int line_length = width - 2; // Reserve space for borders
+        // Calculate the length of the current line (clip if message exceeds the usable width)
+        int line_length = usable_width;
+
         if (line_start + line_length > message_length) {
-            line_length = message_length - line_start; // Adjust for last line
+            line_length = message_length - line_start;
         }
 
-        // Check if the line is too long
-        if (line_length == width - 2) {
-            // If the line is too long, we need to find a space to split it
-            int split_index = line_start + line_length;
-            while (split_index > line_start && message[split_index] != ' ') {
-                split_index--; // Move back to the last space
-            }
+        // Check for a newline or line break
+        char *newline = strchr(message + line_start, '\n');
+        if (newline && (newline - message) < line_start + line_length) {
+            line_length = newline - (message + line_start);  // Adjust to the newline
+        }
 
-            // If no space is found, we break at the max length
-            if (split_index == line_start) {
-                split_index = line_start + line_length; // Force break at max length
-            }
+        // Copy the line to a temporary buffer for printing
+        char line_buffer[usable_width + 1];
+        strncpy(line_buffer, message + line_start, line_length);
+        line_buffer[line_length] = '\0';  // Null-terminate the string
 
-            // Print the line
-            char line[width]; // Create a temporary buffer
-            strncpy(line, message + line_start, split_index - line_start);
-            line[split_index - line_start] = '\0'; // Null-terminate the string
-            mvprintw(start_row++, start_col, "%s", line); // Print the line
-            line_start = split_index + 1; // Move to the next part of the message
-        } else {
-            // Print the last line
-            char line[width];
-            strncpy(line, message + line_start, line_length);
-            line[line_length] = '\0'; // Null-terminate
-            mvprintw(start_row++, start_col, "%s", line); // Print the line
-            break; // Exit the loop
+        // Print the line, ensuring it starts within the box boundaries
+        mvprintw(start_row++, start_col + 1, "%s", line_buffer);
+
+        // Skip past the processed part of the message
+        line_start += line_length;
+
+        // If the line ends with a newline, skip it
+        if (newline && line_start == (newline - message)) {
+            line_start++;
         }
     }
 }
@@ -99,54 +99,100 @@ void print_multiline(int start_row, int start_col, const char *message, int widt
 char* read_config_file(const char* filepath) {
     FILE *file = fopen(filepath, "r");
     if (file == NULL) {
-        return "Failed to open configuration file.";
+        return strdup("Failed to open configuration file.");
     }
 
-    fseek(file, 0, SEEK_END);
-    long length = ftell(file);
-    fseek(file, 0, SEEK_SET);
-
-    char *buffer = malloc(length + 1); // +1 for null terminator
-    if (buffer) {
-        fread(buffer, 1, length, file);
-        buffer[length] = '\0'; // Null-terminate the string
-
-        // Replace new line characters with a space
-        for (long i = 0; i < length; ++i) {
-            if (buffer[i] == '\n') {
-                buffer[i] = ' '; // Replace new line with space
-            }
+    char *buffer = NULL;
+    size_t total_size = 0;
+    
+    // Temporary buffer to read chunks of the file
+    char temp_buffer[256];
+    
+    while (fgets(temp_buffer, sizeof(temp_buffer), file) != NULL) {
+        size_t temp_len = strlen(temp_buffer);
+        char *new_buffer = realloc(buffer, total_size + temp_len + 1); // Reallocate memory
+        
+        if (new_buffer == NULL) {
+            free(buffer); // Free the previous buffer if realloc fails
+            fclose(file);
+            return strdup("Memory allocation error.");
         }
+
+        buffer = new_buffer;
+        strcpy(buffer + total_size, temp_buffer); // Append new data to the buffer
+        total_size += temp_len;
     }
 
     fclose(file);
+
+    // Check if no data was read
+    if (total_size == 0) {
+        free(buffer);
+        return strdup("Configuration file is empty.");
+    }
+
     return buffer;
 }
 
-// Function to run the 'obs list' command and return its output
-char* run_obs_list() {
+char** split_output_into_lines(char* output, int* total_lines) {
+    char** lines = NULL;
+    char* line = strtok(output, "\n");
+    int count = 0;
+
+    while (line != NULL) {
+        lines = realloc(lines, sizeof(char*) * (count + 1));
+        lines[count] = strdup(line);
+        count++;
+        line = strtok(NULL, "\n");
+    }
+
+    *total_lines = count; // Set total lines
+    return lines;
+}
+
+// Modify the `run_obs_list` function to return total lines
+char** run_obs_list(int* total_lines) {
     FILE *fp;
     char *buffer = NULL;
-    size_t size = 0;
+    size_t total_size = 0;
 
-    // Open the command for reading
-    fp = popen("obs list", "r");
+    fp = popen("silica list", "r");
     if (fp == NULL) {
-        return "Failed to run obs list command.";
+        *total_lines = 0; // Set total lines to 0 on failure
+        return NULL;
     }
 
-    // Read the output a line at a time - output it.
-    while (getline(&buffer, &size, fp) != -1) {
-        // Replace newline character with space for display
-        buffer[strcspn(buffer, "\n")] = ' ';
+    char temp_buffer[256];
+    while (fgets(temp_buffer, sizeof(temp_buffer), fp) != NULL) {
+        size_t temp_len = strlen(temp_buffer);
+        char *new_buffer = realloc(buffer, total_size + temp_len + 1);
+        if (new_buffer == NULL) {
+            free(buffer);
+            pclose(fp);
+            *total_lines = 0; // Set total lines to 0 on failure
+            return NULL;
+        }
+        buffer = new_buffer;
+        strcpy(buffer + total_size, temp_buffer);
+        total_size += temp_len;
     }
 
-    // Close the command
     pclose(fp);
-    return buffer;
+
+    // Check if no data was read
+    if (total_size == 0) {
+        free(buffer);
+        *total_lines = 0; // Set total lines to 0 on empty output
+        return NULL;
+    }
+
+    // Split output into lines
+    return split_output_into_lines(buffer, total_lines);
 }
 
 int main() {
+    setlocale(LC_ALL, "");
+
     // Initialize ncurses mode
     initscr();
     clear();
@@ -167,6 +213,12 @@ int main() {
     int highlight = 0; // Keeps track of the currently highlighted item
     int choice = 0;    // Keeps track of the selected choice
 
+    // Declare variables for vault management
+    char **vault_lines = NULL; // Lines for the vault
+    int total_lines = 0;       // Total number of lines
+    int total_pages = 0;       // Total pages for vault lines
+    int current_page = 0;      // Current page of vault lines
+
     // Calculate vertical centering for menu and ASCII art
     int menu_start_row = (row - num_choices) / 2 - 6; // Start the menu at the vertical center
     int ascii_start_row = row / 6 - 2; // Start ASCII art vertically above center
@@ -178,7 +230,6 @@ int main() {
 
     // Variable to hold configuration file contents
     char *config_contents = NULL;
-    char *vault_contents = NULL; // Variable to hold vault contents
 
     // Main loop
     while (1) {
@@ -189,11 +240,11 @@ int main() {
         draw_rounded_box(ascii_start_row, 8, 6, 44); // Increased height for ASCII art box
         draw_rounded_box(menu_start_row, 8, num_choices + 2, 25); // Box for menu
         draw_rounded_box(row - 2, 0, 3, col); // Box for instructions
-        draw_rounded_box(selected_opt_row, 8, 16, 44); // Box for selected option display
+        draw_rounded_box(selected_opt_row, 8, 16, 55); // Box for selected option display
 
         // Print welcome message using the new function
-        print_multiline(ascii_start_row + 1, 9, welcome_message, 44); // 44 is the box width
-        display_ascii_art(ascii_start_row, (col - 20) / 2); // Adjust width as needed
+        print_multiline(ascii_start_row + 1, 9, welcome_message, 43); // 44 is the box width
+        display_ascii_art(ascii_start_row, 70); // Adjust width as needed
 
         // Display the menu on the left side, centered vertically
         for (int i = 0; i < num_choices; ++i) {
@@ -208,22 +259,64 @@ int main() {
         mvprintw(row - 1, 2, instructions);
 
         // Print the selected option in the bottom right box
-        if (highlight >= 0 && highlight < num_choices) {
+        if (highlight == 0) {
             mvprintw(selected_opt_row + 1, 9, "Selected: %s", menu_items[highlight]); // Print selection in box
         }
 
+
+        // Print the selected option in the bottom right box
+        if (highlight >= 0 && highlight < num_choices) {
+            // Prepare the formatted string for the selected option
+            char buffer[100]; // Buffer for the formatted string
+            snprintf(buffer, sizeof(buffer), "Selected: %s", menu_items[highlight]); // Format selection
+
+            // Calculate the position to print the selected item
+            int left_column = 9; // Column for "Selected: " text
+            mvprintw(selected_opt_row + 1, left_column, "%s", buffer); // Print the formatted string on the left
+
+            // Calculate the position for the page number
+            if (total_pages > 0) {
+                // Format the page info
+                char page_info[20]; // Buffer for page info
+                snprintf(page_info, sizeof(page_info), "[%d/%d]", current_page + 1, total_pages); // Page number format
+
+                int box_width = 55; // Width of your box
+                int page_info_column = box_width - strlen(page_info) - 2; // Calculate column for right-justifying the page info
+
+                // Print the page info at the calculated position
+                mvprintw(selected_opt_row + 1, page_info_column, "%s", page_info);
+            }
+        }
         // Display configuration file contents if "Configuration" is selected
         if (highlight == 0 && config_contents) {
             attron(COLOR_PAIR(1)); // Turn on the color pair for configuration content
-            print_multiline(selected_opt_row + 2, 9, config_contents, 44); // Print contents in the box
+            print_multiline(selected_opt_row + 2, 9, config_contents, 54); // Print contents in the box
             attroff(COLOR_PAIR(1)); // Turn off the color pair
         }
 
-        // Display vault contents if "View vault" is selected
-        if (highlight == 1 && vault_contents) {
-            attron(COLOR_PAIR(1)); // Turn on the color pair for vault content
-            print_multiline(selected_opt_row + 2, 9, vault_contents, 44); // Print contents in the box
-            attroff(COLOR_PAIR(1)); // Turn off the color pair
+        if (highlight == 1) {
+            if (vault_lines == NULL) {
+                vault_lines = run_obs_list(&total_lines); // Load new vault contents
+                total_pages = (total_lines + MAX_LINES_PER_PAGE - 1) / MAX_LINES_PER_PAGE; // Calculate total pages
+                current_page = 0; // Reset to first page
+            }
+
+            if (vault_lines != NULL) {
+                attron(COLOR_PAIR(1)); // Turn on the color pair for vault content
+
+                // Calculate the starting and ending line for current page
+                int start_line = current_page * MAX_LINES_PER_PAGE;
+                int end_line = (start_line + MAX_LINES_PER_PAGE < total_lines) ? start_line + MAX_LINES_PER_PAGE : total_lines;
+
+                // Print the lines for the current page
+                for (int i = start_line; i < end_line; i++) {
+                    mvprintw(selected_opt_row + 2 + (i - start_line), 9, "%s", vault_lines[i]);
+                }
+
+                attroff(COLOR_PAIR(1)); // Turn off the color pair
+            } else {
+                mvprintw(selected_opt_row + 2, 9, "No output from obs list.");
+            }
         }
 
         // Refresh the screen to show changes
@@ -240,42 +333,46 @@ int main() {
                 break;
             case 10: // Enter key is pressed
                 choice = highlight;
-                // Clear the previously selected option to avoid lingering text
-                mvprintw(row - 7, col - 28, "Selected: %s", menu_items[choice]);
-                // Load the configuration file contents only when "Configuration" is selected
+                // Handle the selection
                 if (choice == 0) {
                     free(config_contents); // Free previously allocated memory
                     config_contents = read_config_file(CONFIG_FILE_PATH); // Load new config contents
                 }
-                // Execute 'obs list' command when "View vault" is selected
-                else if (choice == 1) {
-                    free(vault_contents); // Free previously allocated memory
-                    vault_contents = run_obs_list(); // Load new vault contents
+                if (choice == 1) { // Only if "View vault" is selected
+                    free(vault_lines); // Free previously allocated memory
+                    vault_lines = NULL; // Reset the vault lines
+                }
+                break;
+            case 'n': // Next page
+                if (current_page < total_pages - 1) {
+                    current_page++;
+                }
+                break;
+            case 'N': // Previous page
+                if (current_page > 0) {
+                    current_page--;
                 }
                 break;
             case 'i': // Open configuration file in Neovim
-                if (highlight == 0) {
-                    // Close the ncurses window and run Neovim
-                    endwin(); // End ncurses mode before running the command
-                    system("nvim " CONFIG_FILE_PATH); // Open config file in Neovim
-                    initscr(); // Reinitialize ncurses mode after returning
-                    refresh();
-                    // Reload the configuration file contents
-                    free(config_contents); // Free previously allocated memory
-                    config_contents = read_config_file(CONFIG_FILE_PATH); // Reload config contents
-                }
+                // ... [existing code]
                 break;
             case 'q': // Exit on 'q' key
-                free(config_contents); // Free allocated memory
-                free(vault_contents); // Free vault contents before exit
+                free(config_contents);
+                for (int i = 0; i < total_lines; i++) {
+                    free(vault_lines[i]);
+                }
+                free(vault_lines); // Free vault lines before exit
                 endwin();
                 return 0;
         }
     }
 
-    // End ncurses mode
-    free(config_contents); // Free allocated memory before exiting
-    free(vault_contents); // Free vault contents before exit
+    // Cleanup before exiting
+    free(config_contents);
+    for (int i = 0; i < total_lines; i++) {
+        free(vault_lines[i]);
+    }
+    free(vault_lines);
     endwin();
     return 0;
 }
