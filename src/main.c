@@ -319,7 +319,8 @@ void edit_note(const char *filepath) {
 // Function to list all notes
 void list_notes() {
     char list_command[FILE_PATH_MAX];
-    snprintf(list_command, sizeof(list_command), "find %s -name '*.md'", target_dir);
+    snprintf(list_command, sizeof(list_command), "tree %s", target_dir);
+    printf("Command: %s\n", list_command);
     int status = system(list_command);
     if (status == -1) {
         perror("Error listing notes");

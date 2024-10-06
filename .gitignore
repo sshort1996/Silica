@@ -1,0 +1,21 @@
+# Compiled object files
+*.o
+*.obj
+
+# Compiled binary files
+*.exe
+*.out
+*.app
+*.dll
+*.so
+*.dylib
+
+# Compiler-specific files
+*.dSYM/
+
+# Build directories
+build/
+
+# Other system files
+.DS_Store
+
