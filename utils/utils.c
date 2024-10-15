@@ -92,7 +92,7 @@ void create_directory(const char *path) {
     if (mkdir(path, 0777) != 0) {
         perror("Failed to create directory");
     } else {
-        printf("Directory '%s' created.\n", path);
+        ;
     }
 }
 
