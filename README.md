@@ -1,13 +1,17 @@
-# Obsidian-CLI
+# Silica-CLI
 
 A CLI tool for managing Obsidian notes via neovim. WIP.
 
 ## Installing
-Clone the directory, then compile using 
-`gcc -Iutils -o build/main src/main.c utils/utils.c -lreadline` (unless I've decided to commit the executable this time). Then move the resulting executable into `/usr/local/bin` or similar on MacOS, or any other directory either on system PATH, or add your own. Give execute permissions on the executable with `sudo chmod +x /usr/local/bin/obs`.
+Clone the directory, then build using 
+`make` 
+and install using 
+`make install`
+You may need to give execute permissions on
+the executable with `sudo chmod +x /usr/local/bin/silica`.
 
 ## Usage
-Tool has four options currently (more to be added):
+The tool can be used either via the command line or a TUI. The command line has four options currently (more to be added):
 ![info](static/info.png)
 
 `obs config` is used to initially set the location of your obsidian vault, and your OpenAI API key (to be used for parsing file contents and renaming files).
@@ -22,6 +26,9 @@ Which when closed will be renamed as:
 
 `obs edit <filename>` is used to edit a previously existing note in the current working directory. This option uses the `readline` tool to give auto-complete suggestions for the file paths in the target directory.
 ![edit](static/edit.png)
+
+The TUI is launched simply by `silica`, navigation is done using vim-style 'hjkl' keybindings, 'n/N' for scrolling through data, 'enter' to select an option, and 'q' to exit.
+
 ## Features in progress
  - Add obsidian links between notes in the same repo
  - Add a backup option to push repositories notes to git, use the correct git profile for work vs personal repositories 

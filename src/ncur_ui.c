@@ -150,8 +150,8 @@ char** split_output_into_lines(char* output, int* total_lines) {
     return lines;
 }
 
-// Modify the `run_obs_list` function to return total lines
-char** run_obs_list(int* total_lines) {
+// Modify the `run_sil_list` function to return total lines
+char** run_sil_list(int* total_lines) {
     FILE *fp;
     char *buffer = NULL;
     size_t total_size = 0;
@@ -190,6 +190,42 @@ char** run_obs_list(int* total_lines) {
     return split_output_into_lines(buffer, total_lines);
 }
 
+// Modify the `run_sil_list` function to return total lines
+char* run_sil_add() {
+    FILE *fp;
+    char *buffer = NULL;
+    size_t total_size = 0;
+
+    fp = popen("silica add", "r");
+    if (fp == NULL) {
+        return NULL;
+    }
+
+    char temp_buffer[256];
+    while (fgets(temp_buffer, sizeof(temp_buffer), fp) != NULL) {
+        size_t temp_len = strlen(temp_buffer);
+        char *new_buffer = realloc(buffer, total_size + temp_len + 1);
+        if (new_buffer == NULL) {
+            free(buffer);
+            pclose(fp);
+            return NULL;
+        }
+        buffer = new_buffer;
+        strcpy(buffer + total_size, temp_buffer);
+        total_size += temp_len;
+    }
+
+    pclose(fp);
+
+    // Check if no data was read
+    if (total_size == 0) {
+        return NULL;
+    }
+
+    // Split output into lines
+    return buffer;
+}
+
 int main() {
     setlocale(LC_ALL, "");
 
@@ -225,11 +261,12 @@ int main() {
     int selected_opt_row = row - 21;
 
     // Instructions message
-    char *instructions = "Use hjkl to navigate, Enter to select, i to edit config, q to quit";
-    char *welcome_message = "Obsidian CLI: Here you can view, create, edit, and otherwise manage notes in your obsidian vault.";
+    char *instructions = "Use hjkl to navigate, Enter to select, i to edit config, n/N to navigate pages, and q to quit";
+    char *welcome_message = "Silica CLI: Here you can view, create, edit, and otherwise manage notes in your obsidian vault.";
 
     // Variable to hold configuration file contents
     char *config_contents = NULL;
+    char *add_message = NULL;
 
     // Main loop
     while (1) {
@@ -259,13 +296,13 @@ int main() {
         mvprintw(row - 1, 2, instructions);
 
         // Print the selected option in the bottom right box
-        if (highlight == 0) {
+        if (highlight != 1 && highlight < num_choices) {
             mvprintw(selected_opt_row + 1, 9, "Selected: %s", menu_items[highlight]); // Print selection in box
         }
 
 
         // Print the selected option in the bottom right box
-        if (highlight >= 0 && highlight < num_choices) {
+        if (highlight == 1) {
             // Prepare the formatted string for the selected option
             char buffer[100]; // Buffer for the formatted string
             snprintf(buffer, sizeof(buffer), "Selected: %s", menu_items[highlight]); // Format selection
@@ -296,7 +333,7 @@ int main() {
 
         if (highlight == 1) {
             if (vault_lines == NULL) {
-                vault_lines = run_obs_list(&total_lines); // Load new vault contents
+                vault_lines = run_sil_list(&total_lines); // Load new vault contents
                 total_pages = (total_lines + MAX_LINES_PER_PAGE - 1) / MAX_LINES_PER_PAGE; // Calculate total pages
                 current_page = 0; // Reset to first page
             }
@@ -318,6 +355,15 @@ int main() {
                 mvprintw(selected_opt_row + 2, 9, "No output from obs list.");
             }
         }
+
+        // Display configuration file contents if "Configuration" is selected
+        if (highlight == 2) {
+            attron(COLOR_PAIR(1)); // Turn on the color pair for configuration content
+            print_multiline(selected_opt_row + 2, 9, add_message, 54); // Print contents in the box
+            attroff(COLOR_PAIR(1)); // Turn off the color pair
+        }
+
+
 
         // Refresh the screen to show changes
         refresh();
@@ -342,6 +388,10 @@ int main() {
                     free(vault_lines); // Free previously allocated memory
                     vault_lines = NULL; // Reset the vault lines
                 }
+                if (choice == 2) { // Only if "View vault" is selected
+                    free(add_message); // Free previously allocated memory
+                    add_message = run_sil_add(); // Reset the vault lines
+                }
                 break;
             case 'n': // Next page
                 if (current_page < total_pages - 1) {
@@ -361,7 +411,8 @@ int main() {
                 for (int i = 0; i < total_lines; i++) {
                     free(vault_lines[i]);
                 }
-                free(vault_lines); // Free vault lines before exit
+                free(vault_lines);
+                free(add_message);
                 endwin();
                 return 0;
         }
@@ -373,6 +424,7 @@ int main() {
         free(vault_lines[i]);
     }
     free(vault_lines);
+    free(add_message);
     endwin();
     return 0;
 }
