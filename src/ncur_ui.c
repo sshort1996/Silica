@@ -7,7 +7,7 @@
 
 #define ASCII_ART_FILE "/Users/shaneshort/Documents/Development/noodling/obs-cli/static/ascii_logo.txt"
 #define CONFIG_FILE_PATH "/Users/shaneshort/obs/.config"
-#define MAX_LINES_PER_PAGE 13 // Adjust this value as needed for your box height
+#define MAX_LINES_PER_PAGE 13
 
 // Define menu options
 char *menu_items[] = {
@@ -31,18 +31,17 @@ void display_ascii_art(int start_row, int col) {
 
     // Read each line from the file and print it to the screen
     while (fgets(line, sizeof(line), file)) {
-        mvprintw(current_row++, col, "%s", line);  // Print line at the specified position
+        mvprintw(current_row++, col, "%s", line);
     }
 
     fclose(file);
 }
 
-// Function to draw rounded corners box
 void draw_rounded_box(int start_row, int start_col, int height, int width) {
-    mvaddch(start_row, start_col, ACS_ULCORNER); // Upper left corner
-    mvaddch(start_row, start_col + width - 1, ACS_URCORNER); // Upper right corner
-    mvaddch(start_row + height - 1, start_col, ACS_LLCORNER); // Lower left corner
-    mvaddch(start_row + height - 1, start_col + width - 1, ACS_LRCORNER); // Lower right corner
+    mvaddch(start_row, start_col, ACS_ULCORNER);
+    mvaddch(start_row, start_col + width - 1, ACS_URCORNER);
+    mvaddch(start_row + height - 1, start_col, ACS_LLCORNER);
+    mvaddch(start_row + height - 1, start_col + width - 1, ACS_LRCORNER);
 
     for (int i = 1; i < width - 1; i++) {
         mvaddch(start_row, start_col + i, ACS_HLINE); // Top horizontal line
@@ -80,7 +79,7 @@ void print_multiline(int start_row, int start_col, const char *message, int widt
         // Copy the line to a temporary buffer for printing
         char line_buffer[usable_width + 1];
         strncpy(line_buffer, message + line_start, line_length);
-        line_buffer[line_length] = '\0';  // Null-terminate the string
+        line_buffer[line_length] = '\0';
 
         // Print the line, ensuring it starts within the box boundaries
         mvprintw(start_row++, start_col + 1, "%s", line_buffer);
@@ -104,28 +103,25 @@ char* read_config_file(const char* filepath) {
 
     char *buffer = NULL;
     size_t total_size = 0;
-    
-    // Temporary buffer to read chunks of the file
     char temp_buffer[256];
     
     while (fgets(temp_buffer, sizeof(temp_buffer), file) != NULL) {
         size_t temp_len = strlen(temp_buffer);
-        char *new_buffer = realloc(buffer, total_size + temp_len + 1); // Reallocate memory
+        char *new_buffer = realloc(buffer, total_size + temp_len + 1);
         
         if (new_buffer == NULL) {
-            free(buffer); // Free the previous buffer if realloc fails
+            free(buffer);
             fclose(file);
             return strdup("Memory allocation error.");
         }
 
         buffer = new_buffer;
-        strcpy(buffer + total_size, temp_buffer); // Append new data to the buffer
+        strcpy(buffer + total_size, temp_buffer);
         total_size += temp_len;
     }
 
     fclose(file);
 
-    // Check if no data was read
     if (total_size == 0) {
         free(buffer);
         return strdup("Configuration file is empty.");
@@ -146,11 +142,10 @@ char** split_output_into_lines(char* output, int* total_lines) {
         line = strtok(NULL, "\n");
     }
 
-    *total_lines = count; // Set total lines
+    *total_lines = count;
     return lines;
 }
 
-// Modify the `run_sil_list` function to return total lines
 char** run_sil_list(int* total_lines) {
     FILE *fp;
     char *buffer = NULL;
@@ -158,7 +153,7 @@ char** run_sil_list(int* total_lines) {
 
     fp = popen("silica list", "r");
     if (fp == NULL) {
-        *total_lines = 0; // Set total lines to 0 on failure
+        *total_lines = 0;
         return NULL;
     }
 
@@ -169,7 +164,7 @@ char** run_sil_list(int* total_lines) {
         if (new_buffer == NULL) {
             free(buffer);
             pclose(fp);
-            *total_lines = 0; // Set total lines to 0 on failure
+            *total_lines = 0;
             return NULL;
         }
         buffer = new_buffer;
@@ -182,15 +177,13 @@ char** run_sil_list(int* total_lines) {
     // Check if no data was read
     if (total_size == 0) {
         free(buffer);
-        *total_lines = 0; // Set total lines to 0 on empty output
+        *total_lines = 0;
         return NULL;
     }
 
-    // Split output into lines
     return split_output_into_lines(buffer, total_lines);
 }
 
-// Modify the `run_sil_list` function to return total lines
 char* run_sil_add() {
     FILE *fp;
     char *buffer = NULL;
@@ -217,23 +210,21 @@ char* run_sil_add() {
 
     pclose(fp);
 
-    // Check if no data was read
     if (total_size == 0) {
+        free(buffer);
         return NULL;
     }
 
-    // Split output into lines
     return buffer;
 }
 
 int main() {
     setlocale(LC_ALL, "");
 
-    // Initialize ncurses mode
     initscr();
     clear();
     noecho();
-    cbreak(); // Disable line buffering, pass input directly
+    cbreak();
     keypad(stdscr, TRUE); // Enable special keys to be captured
 
     // Initialize color support
@@ -256,8 +247,8 @@ int main() {
     int current_page = 0;      // Current page of vault lines
 
     // Calculate vertical centering for menu and ASCII art
-    int menu_start_row = (row - num_choices) / 2 - 6; // Start the menu at the vertical center
-    int ascii_start_row = row / 6 - 2; // Start ASCII art vertically above center
+    int menu_start_row = (row - num_choices) / 2 - 6;
+    int ascii_start_row = row / 6 - 2;
     int selected_opt_row = row - 21;
 
     // Instructions message
@@ -270,26 +261,25 @@ int main() {
 
     // Main loop
     while (1) {
-        // Clear the screen and print instructions and ASCII art
         clear();
 
         // Draw boxes around elements
-        draw_rounded_box(ascii_start_row, 8, 6, 44); // Increased height for ASCII art box
+        draw_rounded_box(ascii_start_row, 8, 6, 44);// Box for ASCII art
         draw_rounded_box(menu_start_row, 8, num_choices + 2, 25); // Box for menu
         draw_rounded_box(row - 2, 0, 3, col); // Box for instructions
         draw_rounded_box(selected_opt_row, 8, 16, 55); // Box for selected option display
 
         // Print welcome message using the new function
         print_multiline(ascii_start_row + 1, 9, welcome_message, 43); // 44 is the box width
-        display_ascii_art(ascii_start_row, 70); // Adjust width as needed
+        display_ascii_art(ascii_start_row, 70);
 
         // Display the menu on the left side, centered vertically
         for (int i = 0; i < num_choices; ++i) {
             if (i == highlight) {
-                attron(A_REVERSE); // Highlight the selected menu item
+                attron(A_REVERSE);
             }
-            mvprintw(menu_start_row + 1 + i, 10, menu_items[i]); // Align menu items vertically centered
-            attroff(A_REVERSE); // Turn off highlighting
+            mvprintw(menu_start_row + 1 + i, 10, menu_items[i]);
+            attroff(A_REVERSE);
         }
 
         // Print instructions at the bottom
@@ -297,27 +287,25 @@ int main() {
 
         // Print the selected option in the bottom right box
         if (highlight != 1 && highlight < num_choices) {
-            mvprintw(selected_opt_row + 1, 9, "Selected: %s", menu_items[highlight]); // Print selection in box
+            mvprintw(selected_opt_row + 1, 9, "Selected: %s", menu_items[highlight]);
         }
 
 
         // Print the selected option in the bottom right box
         if (highlight == 1) {
-            // Prepare the formatted string for the selected option
-            char buffer[100]; // Buffer for the formatted string
-            snprintf(buffer, sizeof(buffer), "Selected: %s", menu_items[highlight]); // Format selection
+            char buffer[100];
+            snprintf(buffer, sizeof(buffer), "Selected: %s", menu_items[highlight]);
 
             // Calculate the position to print the selected item
-            int left_column = 9; // Column for "Selected: " text
-            mvprintw(selected_opt_row + 1, left_column, "%s", buffer); // Print the formatted string on the left
+            int left_column = 9;
+            mvprintw(selected_opt_row + 1, left_column, "%s", buffer);
 
             // Calculate the position for the page number
             if (total_pages > 0) {
-                // Format the page info
-                char page_info[20]; // Buffer for page info
-                snprintf(page_info, sizeof(page_info), "[%d/%d]", current_page + 1, total_pages); // Page number format
+                char page_info[20];
+                snprintf(page_info, sizeof(page_info), "[%d/%d]", current_page + 1, total_pages);
 
-                int box_width = 55; // Width of your box
+                int box_width = 55;
                 int page_info_column = box_width - strlen(page_info) - 2; // Calculate column for right-justifying the page info
 
                 // Print the page info at the calculated position
@@ -326,20 +314,21 @@ int main() {
         }
         // Display configuration file contents if "Configuration" is selected
         if (highlight == 0 && config_contents) {
-            attron(COLOR_PAIR(1)); // Turn on the color pair for configuration content
-            print_multiline(selected_opt_row + 2, 9, config_contents, 54); // Print contents in the box
-            attroff(COLOR_PAIR(1)); // Turn off the color pair
+            attron(COLOR_PAIR(1));
+            print_multiline(selected_opt_row + 2, 9, config_contents, 54);
+            attroff(COLOR_PAIR(1));
         }
 
+        // Display vault contents if "View vault" is selected
         if (highlight == 1) {
             if (vault_lines == NULL) {
-                vault_lines = run_sil_list(&total_lines); // Load new vault contents
-                total_pages = (total_lines + MAX_LINES_PER_PAGE - 1) / MAX_LINES_PER_PAGE; // Calculate total pages
-                current_page = 0; // Reset to first page
+                vault_lines = run_sil_list(&total_lines);
+                total_pages = (total_lines + MAX_LINES_PER_PAGE - 1) / MAX_LINES_PER_PAGE;
+                current_page = 0;
             }
 
             if (vault_lines != NULL) {
-                attron(COLOR_PAIR(1)); // Turn on the color pair for vault content
+                attron(COLOR_PAIR(1));
 
                 // Calculate the starting and ending line for current page
                 int start_line = current_page * MAX_LINES_PER_PAGE;
@@ -350,17 +339,17 @@ int main() {
                     mvprintw(selected_opt_row + 2 + (i - start_line), 9, "%s", vault_lines[i]);
                 }
 
-                attroff(COLOR_PAIR(1)); // Turn off the color pair
+                attroff(COLOR_PAIR(1));
             } else {
                 mvprintw(selected_opt_row + 2, 9, "No output from obs list.");
             }
         }
 
-        // Display configuration file contents if "Configuration" is selected
+        // Display stdout from `silica add` if "Create a new note" is selected
         if (highlight == 2) {
-            attron(COLOR_PAIR(1)); // Turn on the color pair for configuration content
-            print_multiline(selected_opt_row + 2, 9, add_message, 54); // Print contents in the box
-            attroff(COLOR_PAIR(1)); // Turn off the color pair
+            attron(COLOR_PAIR(1));
+            print_multiline(selected_opt_row + 2, 9, add_message, 54);
+            attroff(COLOR_PAIR(1));
         }
 
 
@@ -371,26 +360,25 @@ int main() {
         // Capture user input
         int c = getch();
         switch (c) {
-            case 'k': // Move up (Vim-style)
+            case 'k': // Move up 
                 highlight = (highlight == 0) ? num_choices - 1 : highlight - 1;
                 break;
-            case 'j': // Move down (Vim-style)
+            case 'j': // Move down
                 highlight = (highlight == num_choices - 1) ? 0 : highlight + 1;
                 break;
-            case 10: // Enter key is pressed
+            case 10: // Enter key
                 choice = highlight;
-                // Handle the selection
-                if (choice == 0) {
-                    free(config_contents); // Free previously allocated memory
-                    config_contents = read_config_file(CONFIG_FILE_PATH); // Load new config contents
+                if (choice == 0) { // Only if "Configuration" is selected
+                    free(config_contents);
+                    config_contents = read_config_file(CONFIG_FILE_PATH);
                 }
                 if (choice == 1) { // Only if "View vault" is selected
-                    free(vault_lines); // Free previously allocated memory
-                    vault_lines = NULL; // Reset the vault lines
+                    free(vault_lines);
+                    vault_lines = NULL;
                 }
-                if (choice == 2) { // Only if "View vault" is selected
-                    free(add_message); // Free previously allocated memory
-                    add_message = run_sil_add(); // Reset the vault lines
+                if (choice == 2) { // Only if "Create a new note" is selected
+                    free(add_message);
+                    add_message = run_sil_add();
                 }
                 break;
             case 'n': // Next page
@@ -404,7 +392,16 @@ int main() {
                 }
                 break;
             case 'i': // Open configuration file in Neovim
-                // ... [existing code]
+                if (highlight == 0) {
+                    // Close the ncurses window and run Neovim
+                    endwin(); // End ncurses mode before running the command
+                    system("nvim " CONFIG_FILE_PATH); // Open config file in Neovim
+                    initscr(); // Reinitialize ncurses mode after returning
+                    refresh();
+                    // Reload the configuration file contents
+                    free(config_contents); // Free previously allocated memory
+                    config_contents = read_config_file(CONFIG_FILE_PATH); // Reload config contents
+                }
                 break;
             case 'q': // Exit on 'q' key
                 free(config_contents);
